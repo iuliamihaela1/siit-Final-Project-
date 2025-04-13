@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clothing Manager</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+<h1>Clothing Manager</h1>
+
+<form id="register-form">
+    <h2>Register</h2>
+    <input type="text" id="reg-email" placeholder="Email" required>
+    <input type="password" id="reg-password" placeholder="Password" required>
+    <button type="submit">Register</button>
+</form>
+
+<form id="login-form">
+    <h2>Login</h2>
+    <input type="text" id="login-email" placeholder="Email" required>
+    <input type="password" id="login-password" placeholder="Password" required>
+    <button type="submit">Login</button>
+</form>
+
+<form id="logout-form" style="display:none">
+    <h2>Logout</h2>
+    <button type="submit">Logout</button>
+</form>
+
+<div id="app" style="display:none">
+    <form id="add-clothing-form">
+        <h2>Add Clothing Item</h2>
+        <input type="text" id="item-name" placeholder="Name" required>
+        <input type="number" id="item-price" placeholder="Price" required>
+        <input type="text" id="item-size" placeholder="Size" required>
+        <input type="text" id="item-photo" placeholder="Photo URL" required>
+        <input type="number" id="item-stock" placeholder="Stock" required>
+        <button type="submit">Add Item</button>
+    </form>
+
+    <div id="clothing-list"></div>
+</div>
+
+<script>
+    const API_BASE = 'http://localhost:3000';
+    let token = '';
+
+    const registerForm = document.getElementById('register-form');
+    const loginForm = document.getElementById('login-form');
+    const logoutForm = document.getElementById('logout-form');
+    const addForm = document.getElementById('add-clothing-form');
+    const list = document.getElementById('clothing-list');
+    const app = document.getElementById('app');
+
+    function removeItemById(itemId) {
+        const item = document.getElementById(itemId);
+        if (item) {
+            item.remove();
+            console.log(`Item with ID "${itemId}" has been removed.`);
+        } else {
+            console.log(`Item with ID "${itemId}" not found.`);
+        }
+    }
+
+
+    registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('reg-email').value;
+        const password = document.getElementById('reg-password').value;
+        await fetch(`${API_BASE}/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        alert('User registered!');
+    });
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const res = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            token = data.accessToken;
+            localStorage.setItem('token', token);
+            app.style.display = 'block';
+            loginForm.style.display = 'none';
+            registerForm.style.display = 'none';
+            logoutForm.style.display = 'block';
+        }
+        loadItems();
+    });
+
+    (async function verifyToken() {
+        if (!localStorage.getItem('token')) return;
+
+        try {
+            const res = await fetch(`${API_BASE}/users`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (!res.ok) return false;
+            app.style.display = 'block';
+            loginForm.style.display = 'none';
+            registerForm.style.display = 'none';
+            logoutForm.style.display = 'block';
+            loadItems();
+        } catch (err) {
+            localStorage.removeItem('token');
+            token = '';
+            console.warn(err.message);
+            loginForm.style.display = 'block';
+        }
+    })();
+
+    logoutForm.addEventListener('submit', async (e) => {
+      localStorage.removeItem('token');
+      window.location.reload();
+    })
+
+    addForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('item-name').value;
+        const price = document.getElementById('item-price').value;
+        const size = document.getElementById('item-size').value;
+        const photo = document.getElementById('item-photo').value;
+        const stock = document.getElementById('item-stock').value;
+        const res = await fetch(`${API_BASE}/clothes`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ name, price, size, photo, stock })
+        });
+        const item = await res.json();
+        displayItem(item);
+    });
+
+    function displayItem(item) {
+        const clothingItem = document.createElement('div');
+        clothingItem.classList.add('item');
+        clothingItem.id = `item-${item.id}`;
+
+        const photoDiv = document.createElement('div');
+        photoDiv.classList.add('photo');
+
+        const img = document.createElement('img');
+        img.src = item.photo;
+        img.alt = '';
+
+        photoDiv.appendChild(img);
+
+        const nameDiv = document.createElement('div');
+        nameDiv.classList.add('name');
+        nameDiv.textContent = item.name;
+
+        const priceDiv = document.createElement('div');
+        priceDiv.classList.add('price');
+        priceDiv.textContent = `${item.price}$`;
+
+        const inStock = document.createElement('div');
+        inStock.classList.add('stock');
+        inStock.textContent = `Items in stock: ${item.stock}`;
+
+        clothingItem.appendChild(photoDiv);
+        clothingItem.appendChild(nameDiv);
+        clothingItem.appendChild(priceDiv);
+        clothingItem.appendChild(inStock);
+
+
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Delete';
+        delBtn.onclick = async () => {
+            await fetch(`${API_BASE}/clothes/${item.id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            clothingItem.remove();
+        };
+
+        const editBtn = document.createElement('button');
+        editBtn.textContent = 'Edit';
+        editBtn.onclick = async () => {
+            const newName = prompt('New name:', item.name);
+            const newPrice = prompt('New price:', item.price);
+            const newSize = prompt('New size:', item.size);
+            const newPhoto = prompt('New photo:', item.photo);
+            const newStock = prompt('New stock:', item.stock);
+            if (newName && newPrice && newSize && newPhoto && newStock) {
+                const res = await fetch(`${API_BASE}/clothes/${item.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ name: newName, price: newPrice, size: newSize, photo: newPhoto, stock: newStock })
+                });
+                const updated = await res.json();
+                removeItemById( `item-${item.id}`);
+                displayItem(updated);
+                clothingItem.appendChild(editBtn);
+                clothingItem.appendChild(delBtn);
+            }
+        };
+        clothingItem.appendChild(editBtn);
+        clothingItem.appendChild(delBtn);
+
+        document.getElementById('clothing-list').appendChild(clothingItem);
+    }
+
+    async function loadItems() {
+        list.innerHTML = '';
+        const res = await fetch(`${API_BASE}/clothes`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const items = await res.json();
+        items.forEach(displayItem);
+    }
+
+</script>
+</body>
+</html>
